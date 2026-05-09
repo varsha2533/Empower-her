@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from 'react';
+import { useUser } from '@clerk/clerk-react';
 import { Button } from "@/components/ui/button";
 import { Contact } from './EmergencyContacts';
 import { AlertTriangle, WifiOff } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+
+/**
+ * SOSAlert Component
+ * 
+ * Main emergency SOS button component that:
+ * 1. Captures user's location (with permission)
+ * 2. Sends SOS alert to backend with emergency contacts
+ * 3. Displays risk assessment from FastAPI
+ * 4. Shows loading state and error handling
+ * 5. Maintains network status awareness
+ */
 
 interface SOSAlertProps {
   contacts: Contact[];
@@ -14,14 +26,31 @@ interface SendResult {
   error?: string;
 }
 
-const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
-  const [isActive, setIsActive] = useState(false);
-  const [location, setLocation] = useState<GeolocationPosition | null>(null);
-  const [isSending, setIsSending] = useState(false);
-  const [failedContacts, setFailedContacts] = useState<Contact[]>([]);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [sendResults, setSendResults] = useState<SendResult[]>([]);
+interface RiskData {
+  riskScore: number;
+  riskLevel: string;
+  recommendation: string;
+}
 
+const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
+  // Clerk authentication
+  const { user, isSignedIn } = useUser();
+  
+  // State management
+  const [isActive, setIsActive] = useState(false);           // SOS button active state
+  const [location, setLocation] = useState<GeolocationPosition | null>(null);  // User location
+  const [isSending, setIsSending] = useState(false);         // Loading state during send
+  const [failedContacts, setFailedContacts] = useState<Contact[]>([]);  // Contacts that failed
+  const [isOnline, setIsOnline] = useState(navigator.onLine);  // Network status
+  const [sendResults, setSendResults] = useState<SendResult[]>([]);  // Results of send
+  const [riskData, setRiskData] = useState<RiskData | null>(null);  // Risk assessment data
+  const [message, setMessage] = useState<string>('');          // Custom SOS message text
+  const defaultMessage = '🚨 Emergency SOS Alert';
+
+  /**
+   * Monitor network connectivity
+   * This effect listens to online/offline events to disable SOS when disconnected
+   */
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -35,6 +64,10 @@ const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
     };
   }, []);
 
+  /**
+   * Check backend health/availability
+   * Ensures backend is reachable before sending SOS
+   */
   const checkNetworkStatus = async () => {
     try {
       const response = await fetch('/api/health-check');
@@ -44,6 +77,16 @@ const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
     }
   };
 
+  /**
+   * Send SOS Alert to Backend
+   * 
+   * Process:
+   * 1. Validate network connectivity
+   * 2. Validate emergency contacts exist
+   * 3. Clean and validate phone numbers
+   * 4. Send request to /api/sos endpoint
+   * 5. Return risk assessment data
+   */
   const sendSOSAlert = async (position: GeolocationPosition) => {
     try {
       console.log('Attempting to send SOS alert to backend');
@@ -74,13 +117,15 @@ const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
         };
       });
 
+      const submittedMessage = message.trim() || defaultMessage;
       const requestBody = {
         contacts: validatedContacts,
         location: {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         },
-        message: '🚨 Emergency SOS Alert'
+        message: submittedMessage,
+        userId: user?.id, // Add Clerk user ID
       };
 
       console.log('Sending SOS request to backend:', requestBody);
@@ -129,7 +174,7 @@ const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
       }
 
       console.log('SOS alert sent successfully to backend');
-      return { success: true };
+      return { success: true, riskData: data.riskData };
     } catch (error: any) {
       console.error('Error sending SOS alert:', {
         error: error.message,
@@ -143,6 +188,16 @@ const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
   };
 
   const handleSOS = async () => {
+    // Check if user is authenticated
+    if (!isSignedIn || !user?.id) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to use the SOS feature.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!isOnline) {
       toast({
         title: "No Internet Connection",
@@ -186,6 +241,11 @@ const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
               }))
             );
             
+            // Set risk data from response
+            if (result.riskData) {
+              setRiskData(result.riskData);
+            }
+            
             toast({
               title: "SOS sent successfully",
               description: "All emergency contacts have been notified with your location.",
@@ -211,7 +271,7 @@ const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
           
           setIsSending(false);
         },
-        (error) => {
+        async (error) => {
           console.error('Error getting location:', error);
 
           const locationErrorMessage = error?.message || 'Unable to get your location.';
@@ -221,65 +281,63 @@ const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
             error?.code === 3 ? 'Location Request Timed Out' :
             'Location Error';
 
-          // For permission denied, offer to continue without location
+          // For permission denied, send SOS without location data
           if (error?.code === 1) {
             toast({
               title: locationErrorTitle,
-              description: "Location access denied. Would you like to send SOS without location data?",
+              description: "Sending SOS alert without location data...",
               variant: "destructive",
-              action: {
-                altText: "Send without location",
-                onClick: async () => {
-                  // Send SOS without location data
-                  const mockPosition = {
-                    coords: {
-                      latitude: 0,
-                      longitude: 0,
-                      accuracy: 0,
-                      altitude: null,
-                      altitudeAccuracy: null,
-                      heading: null,
-                      speed: null
-                    },
-                    timestamp: Date.now()
-                  };
-
-                  const result = await sendSOSAlert(mockPosition);
-
-                  if (result.success) {
-                    setSendResults(
-                      contacts.map(contact => ({
-                        contact,
-                        success: true
-                      }))
-                    );
-
-                    toast({
-                      title: "SOS sent successfully",
-                      description: "Emergency contacts notified (location not available).",
-                    });
-                  } else {
-                    setSendResults(
-                      contacts.map(contact => ({
-                        contact,
-                        success: false,
-                        error: result.error
-                      }))
-                    );
-
-                    setFailedContacts(contacts);
-
-                    toast({
-                      title: "Failed to send SOS",
-                      description: result.error || "Could not send SOS alert. Please try again.",
-                      variant: "destructive",
-                    });
-                  }
-
-                  setIsSending(false);
-                }
-              }
             });
+
+            // Create a mock position with 0,0 coordinates (location not available)
+            const mockPosition = {
+              coords: {
+                latitude: 0 as const,
+                longitude: 0 as const,
+                accuracy: 0 as const,
+                altitude: null as any,
+                altitudeAccuracy: null as any,
+                heading: null as any,
+                speed: null as any,
+                toJSON: function() { return this; }
+              },
+              timestamp: Date.now(),
+              toJSON: function() { return this; }
+            } as GeolocationPosition;
+
+            const result = await sendSOSAlert(mockPosition);
+
+            if (result.success) {
+              setSendResults(
+                contacts.map(contact => ({
+                  contact,
+                  success: true
+                }))
+              );
+
+              toast({
+                title: "SOS sent successfully",
+                description: "Emergency contacts notified (location not available).",
+              });
+            } else {
+              setSendResults(
+                contacts.map(contact => ({
+                  contact,
+                  success: false,
+                  error: result.error
+                }))
+              );
+
+              setFailedContacts(contacts);
+
+              toast({
+                title: "Failed to send SOS",
+                description: result.error || "Could not send SOS alert. Please try again.",
+                variant: "destructive",
+              });
+            }
+
+            setIsSending(false);
           } else {
             toast({
               title: locationErrorTitle,
@@ -304,29 +362,68 @@ const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
   };
 
   return (
-    <div className={`rounded-lg p-6 mb-6 text-center ${
-      isActive ? 'bg-red-100 animate-pulse' : 'bg-empowerHer-lightCoral'
+    <div className={`rounded-3xl p-8 text-center transition-all duration-500 ${
+      isActive 
+        ? 'bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 animate-sos-pulse border-2 border-red-200 dark:border-red-800' 
+        : 'bg-gradient-to-br from-calm-lavender to-calm-mutedPink dark:from-calm-deepNavy dark:to-calm-slate border border-empowerHer-primary/20'
     }`}>
-      <Button
-        onClick={handleSOS}
-        disabled={isSending || !isOnline}
-        className={`w-32 h-32 rounded-full transition-all duration-300 ${
-          isActive 
-            ? 'bg-red-600 hover:bg-red-700 scale-110' 
-            : 'bg-empowerHer-purple hover:bg-empowerHer-purple/90'
-        }`}
-      >
-        <div className="flex flex-col items-center">
-          {!isOnline && <WifiOff className="h-6 w-6 mb-2 text-red-500" />}
-          <AlertTriangle className="h-8 w-8 mb-2" />
-          <span className="text-lg font-semibold">
-            {isSending ? 'SENDING...' : isActive ? 'ACTIVE' : 'SOS'}
-          </span>
-        </div>
-      </Button>
+      {/* Message Input Section */}
+      <div className="mb-6 text-left">
+        <label htmlFor="sos-message" className="block text-sm font-semibold text-empowerHer-primary dark:text-empowerHer-lightPurple mb-3">
+          Describe the emergency
+        </label>
+        <textarea
+          id="sos-message"
+          value={message}
+          onChange={(event) => setMessage(event.target.value)}
+          placeholder="Describe the emergency..."
+          rows={4}
+          className="w-full rounded-2xl border border-empowerHer-primary/20 bg-white/80 dark:bg-card/80 backdrop-blur-sm px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground shadow-sm focus:border-empowerHer-primary focus:outline-none focus:ring-2 focus:ring-empowerHer-primary/20 transition-all duration-300"
+        />
+        <p className="mt-2 text-xs text-muted-foreground">
+          Leave this blank to send the default emergency alert message.
+        </p>
+      </div>
       
-      <div className="mt-4">
-        <p className="font-medium">
+      {/* Premium SOS Button */}
+      <div className="relative inline-block mb-6">
+        <Button
+          onClick={handleSOS}
+          disabled={isSending || !isOnline}
+          className={`w-40 h-40 rounded-full transition-all duration-500 relative overflow-hidden group ${
+            isActive 
+              ? 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 animate-sos-pulse shadow-2xl' 
+              : 'bg-gradient-to-br from-empowerHer-primary to-empowerHer-accent1 hover:from-empowerHer-primary/90 hover:to-empowerHer-accent1/90 animate-premium-glow shadow-xl hover:shadow-2xl'
+          } ${isSending ? 'opacity-80 cursor-wait' : ''} transform hover:scale-105 active:scale-95`}
+        >
+          {/* Inner glow effect */}
+          <div className="absolute inset-0 rounded-full bg-white/20 animate-pulse" />
+          
+          <div className="relative flex flex-col items-center justify-center h-full">
+            {!isOnline && <WifiOff className="h-8 w-8 mb-2 text-white" />}
+            
+            {/* Loading spinner during sending */}
+            {isSending ? (
+              <div className="animate-spin rounded-full h-12 w-12 border-3 border-white border-t-transparent" />
+            ) : (
+              <AlertTriangle className="h-12 w-12 mb-2 text-white drop-shadow-lg" />
+            )}
+            
+            <span className="text-xl font-bold text-white drop-shadow-md">
+              {isSending ? 'SENDING...' : isActive ? 'ACTIVE' : 'SOS'}
+            </span>
+          </div>
+        </Button>
+        
+        {/* Pulsing ring effect when active */}
+        {isActive && (
+          <div className="absolute inset-0 rounded-full border-4 border-red-400 animate-ping" />
+        )}
+      </div>
+      
+      {/* Status Messages */}
+      <div className="space-y-4">
+        <p className="font-semibold text-empowerHer-primary dark:text-empowerHer-lightPurple">
           {!isOnline 
             ? 'No Internet Connection - Please check your network'
             : isActive 
@@ -334,22 +431,68 @@ const SOSAlert: React.FC<SOSAlertProps> = ({ contacts }) => {
               : 'Press the button in case of emergency'
           }
         </p>
+        
         {location && (
-          <p className="text-sm mt-2">
-            Location shared: {location.coords.latitude.toFixed(6)}, {location.coords.longitude.toFixed(6)}
-          </p>
+          <div className="bg-white/60 dark:bg-card/60 backdrop-blur-sm rounded-2xl p-4 border border-empowerHer-primary/20">
+            <p className="text-sm font-medium text-empowerHer-primary dark:text-empowerHer-lightPurple mb-1">
+              Location Shared
+            </p>
+            <p className="text-xs text-muted-foreground font-mono">
+              {location.coords.latitude.toFixed(6)}, {location.coords.longitude.toFixed(6)}
+            </p>
+          </div>
         )}
+        
+        {/* Risk Assessment Display */}
+        {riskData && isActive && (
+          <div className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-3xl p-6 border border-empowerHer-primary/30">
+            <h3 className="text-xl font-bold text-empowerHer-primary dark:text-empowerHer-lightPurple mb-4">
+              Risk Assessment
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white/80 dark:bg-card/80 rounded-2xl p-4 text-center">
+                <p className="text-xs text-muted-foreground font-medium mb-2">Risk Score</p>
+                <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                  {riskData.riskScore.toFixed(1)}/10
+                </p>
+              </div>
+              <div className={`rounded-2xl p-4 text-center ${
+                riskData.riskLevel === 'HIGH' ? 'bg-red-100 dark:bg-red-900/30' :
+                riskData.riskLevel === 'MEDIUM' ? 'bg-yellow-100 dark:bg-yellow-900/30' :
+                'bg-green-100 dark:bg-green-900/30'
+              }`}>
+                <p className="text-xs text-muted-foreground font-medium mb-2">Risk Level</p>
+                <p className={`text-3xl font-bold ${
+                  riskData.riskLevel === 'HIGH' ? 'text-red-600 dark:text-red-400' :
+                  riskData.riskLevel === 'MEDIUM' ? 'text-yellow-600 dark:text-yellow-400' :
+                  'text-green-600 dark:text-green-400'
+                }`}>
+                  {riskData.riskLevel}
+                </p>
+              </div>
+            </div>
+            {riskData.recommendation && (
+              <div className="mt-4 bg-white/80 dark:bg-card/80 rounded-2xl p-4">
+                <p className="text-xs text-muted-foreground font-medium mb-2">Recommendation</p>
+                <p className="text-sm text-foreground">{riskData.recommendation}</p>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Failed Contacts */}
         {failedContacts.length > 0 && (
-          <div className="mt-4 text-sm text-red-600">
-            <p className="font-medium">Failed to notify:</p>
-            <ul className="list-disc list-inside">
+          <div className="bg-red-50 dark:bg-red-900/20 rounded-2xl p-4 border border-red-200 dark:border-red-800">
+            <p className="font-semibold text-red-700 dark:text-red-400 mb-3">Failed to notify:</p>
+            <ul className="space-y-2">
               {failedContacts.map((contact, index) => (
-                <li key={contact.id}>
-                  {contact.name} ({contact.phone})
+                <li key={contact.id} className="text-sm text-red-600 dark:text-red-300">
+                  <div className="font-medium">{contact.name}</div>
+                  <div className="text-xs">{contact.phone}</div>
                   {sendResults[index]?.error && (
-                    <span className="block text-xs text-red-400">
+                    <div className="text-xs text-red-500 dark:text-red-400 mt-1">
                       Error: {sendResults[index].error}
-                    </span>
+                    </div>
                   )}
                 </li>
               ))}

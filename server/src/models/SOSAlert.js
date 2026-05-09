@@ -2,6 +2,12 @@ import mongoose from "mongoose";
 
 const sosAlertSchema = new mongoose.Schema(
   {
+    userId: {
+      type: String,
+      required: true,
+      ref: 'User'
+    },
+
     contacts: [
       {
         name: {
@@ -39,6 +45,16 @@ const sosAlertSchema = new mongoose.Schema(
 
     riskScore: {
       type: Number,
+      default: null,
+    },
+
+    riskLevel: {
+      type: String,
+      default: null,
+    },
+
+    recommendation: {
+      type: String,
       default: null,
     },
   },

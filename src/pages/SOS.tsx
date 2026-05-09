@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, MapPin, BellRing } from 'lucide-react';
+import { Phone, MapPin, BellRing, AlertTriangle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,53 +48,71 @@ const SOSPage = () => {
   };
 
   return (
-    <div className="container max-w-4xl mx-auto p-4 space-y-8">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-bold">Emergency SOS</h1>
-        <p className="text-muted-foreground">
-          Activate SOS to alert your emergency contacts and share your location. Use this feature in situations where you feel unsafe or need immediate assistance.
-        </p>
-      </header>
+    <div className="min-h-screen bg-gradient-to-br from-calm-lavender via-calm-softWhite to-calm-paleBlue dark:from-calm-deepNavy dark:via-calm-slate dark:to-calm-deepNavy">
+      <div className="container max-w-6xl mx-auto p-4 py-8 space-y-8">
+        {/* Header Section */}
+        <header className="text-center space-y-4 mb-8">
+          <div className="inline-flex items-center justify-center p-3 rounded-full bg-gradient-to-r from-empowerHer-primary to-empowerHer-accent1 shadow-lg">
+            <AlertTriangle className="h-8 w-8 text-white" />
+          </div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-empowerHer-primary via-empowerHer-secondary to-empowerHer-accent1 bg-clip-text text-transparent">
+            Emergency SOS
+          </h1>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+            Activate SOS to alert your emergency contacts and share your location. Use this feature in situations where you feel unsafe or need immediate assistance.
+          </p>
+        </header>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className="space-y-4">
-          <SOSAlert contacts={contacts} />
-          
-          <Button
-            variant="destructive"
-            size="lg"
-            className="w-full"
-            onClick={handleEmergencyCall}
-          >
-            <Phone className="mr-2 h-4 w-4" />
-            Call Emergency Services (911)
-          </Button>
-        </div>
+        {/* Main Content Grid */}
+        <div className="grid lg:grid-cols-2 items-stretch">
+          {/* SOS Alert Section */}
+          <div className="space-y-6">
+            <div className="glass-card p-8 rounded-3xl border border-empowerHer-primary/20">
+              <SOSAlert contacts={contacts} />
+            </div>
+            
+            {/* Emergency Call Button */}
+            <Button
+              onClick={handleEmergencyCall}
+              className="w-full h-16 rounded-2xl bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95"
+            >
+              <Phone className="mr-3 h-5 w-5" />
+              Call Emergency Services (911)
+            </Button>
+          </div>
 
-        <div className="space-y-4">
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button className="w-full" variant="outline">
-                <BellRing className="mr-2 h-4 w-4" />
-                Manage Emergency Contacts
+          {/* Controls Section */}
+          <div className="flex items-center justify-center h-full">
+            <div className="space-y-6 w-full max-w-sm">
+              {/* Emergency Contacts */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button className="w-full h-16 rounded-2xl bg-gradient-to-r from-empowerHer-primary to-empowerHer-secondary hover:from-empowerHer-primary/90 hover:to-empowerHer-secondary/90 text-white font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95">
+                    <BellRing className="mr-3 h-5 w-5" />
+                    Manage Emergency Contacts
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-h-[90vh] overflow-y-auto rounded-3xl border border-empowerHer-primary/20">
+                  <DialogHeader>
+                    <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-empowerHer-primary to-empowerHer-accent1 bg-clip-text text-transparent">
+                      Emergency Contacts
+                    </DialogTitle>
+                  </DialogHeader>
+                  <EmergencyContacts
+                    contacts={contacts}
+                    onAddContact={handleAddContact}
+                    onRemoveContact={handleRemoveContact}
+                  />
+                </DialogContent>
+              </Dialog>
+
+              {/* Safe Locations */}
+              <Button className="w-full h-16 rounded-2xl bg-white dark:bg-card border-2 border-empowerHer-primary/20 hover:border-empowerHer-primary/40 text-empowerHer-primary font-semibold text-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-95">
+                <MapPin className="mr-3 h-5 w-5" />
+                Set Safe Locations
               </Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Emergency Contacts</DialogTitle>
-              </DialogHeader>
-              <EmergencyContacts
-                contacts={contacts}
-                onAddContact={handleAddContact}
-                onRemoveContact={handleRemoveContact}
-              />
-            </DialogContent>
-          </Dialog>
-
-          <Button variant="outline" className="w-full">
-            <MapPin className="mr-2 h-4 w-4" />
-            Set Safe Locations
-          </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

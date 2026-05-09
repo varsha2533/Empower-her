@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/clerk-react';
 import Layout from '@/components/Layout';
 import Index from '@/pages/Index';
 import SOSPage from '@/pages/SOS';
+import SOSHistory from '@/pages/SOSHistory';
 import MedicalPage from '@/pages/Medical';
 import RestroomsPage from '@/pages/Restrooms';
 import ResourcesPage from '@/pages/Resources';
@@ -32,6 +33,7 @@ const AppRoutes = () => {
       <Route path="/" element={<Layout><Outlet /></Layout>}>
         <Route index element={<Index />} />
         <Route path="sos" element={<SOSPage />} />
+        <Route path="sos-history" element={<SOSHistory />} />
         <Route path="medical" element={<MedicalPage />} />
         <Route path="restrooms" element={<RestroomsPage />} />
         <Route path="resources" element={<ResourcesPage />} />
